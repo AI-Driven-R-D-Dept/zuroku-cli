@@ -1,6 +1,10 @@
 ---
 name: zuroku-publish
 description: HTML + 関連画像を zuroku CLI で publish したい場面で発動。「zuroku に上げて」「グラレコ publish」「explainer をデプロイ」で発動。
+license: MIT
+metadata:
+  author: AI-Driven-R-D-Dept
+  version: '0.1.0'
 user-invocable: true
 argument-hint: <html-path> [image-paths...] --title "..." [--no-compress] [--visibility private|curator] [--private]
 allowed-tools: Bash, Read, Edit, Write

@@ -1,5 +1,8 @@
 # @zuroku/cli
 
+[![npm](https://img.shields.io/npm/v/@zuroku/cli.svg)](https://www.npmjs.com/package/@zuroku/cli)
+[![skills.sh](https://skills.sh/b/AI-Driven-R-D-Dept/zuroku-cli)](https://skills.sh/AI-Driven-R-D-Dept/zuroku-cli)
+
 Command-line publisher for [zuroku](https://github.com/MASAKASUNO1/zuroku) — uploads an HTML page plus its image assets to a zuroku instance and returns a shareable URL.
 
 Designed for AI agents (Claude Code, etc.) and humans who generate static graphic-recording / explainer pages and want a one-shot deploy step.
@@ -91,7 +94,22 @@ URL=$(zuroku publish ./index.html ./img/*.png --title "..." 2>/dev/null | tail -
 
 ## Claude Code skill
 
-A ready-to-use Claude Code skill ships under [`skills/zuroku-publish/SKILL.md`](./skills/zuroku-publish/SKILL.md). Copy it into your project's `.claude/skills/` to let Claude Code drive this CLI directly.
+A ready-to-use Claude Code skill ships under [`skills/zuroku-publish/`](./skills/zuroku-publish/SKILL.md). It lets an AI agent drive `zuroku publish` end-to-end (HTML rewrite, asset check, fail-fast preflight) without further prompting.
+
+Install it once via [`skills`](https://skills.sh):
+
+```bash
+# install all skills from this repo to the agents you choose
+npx skills add AI-Driven-R-D-Dept/zuroku-cli
+
+# or pick just this skill
+npx skills add AI-Driven-R-D-Dept/zuroku-cli --skill zuroku-publish
+
+# global (~/<agent>/skills/) install for Claude Code only
+npx skills add AI-Driven-R-D-Dept/zuroku-cli -s zuroku-publish -a claude-code -g
+```
+
+Manual install also works: copy [`skills/zuroku-publish/SKILL.md`](./skills/zuroku-publish/SKILL.md) into your project's `.claude/skills/zuroku-publish/SKILL.md`.
 
 ## License
 
