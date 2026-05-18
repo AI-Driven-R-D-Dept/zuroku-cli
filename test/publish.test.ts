@@ -4,7 +4,7 @@
 
 import { Command } from 'commander';
 import { describe, expect, it } from 'vitest';
-import { registerPublishCommand } from '../src/commands/publish.js';
+import { registerPublishCommand, rewriteHtmlForRename } from '../src/commands/publish.js';
 
 function makeProgram(): Command {
   const program = new Command();
@@ -101,5 +101,61 @@ describe('resolveVisibility (publish.ts handler logic と同等)', () => {
 
   it.each(['Public', 'PRIVATE', 'foo', ''])('不正値 (%s) は throw', (bad) => {
     expect(() => resolveVisibility({ visibility: bad })).toThrow();
+  });
+});
+
+describe('rewriteHtmlForRename (compress 時の HTML img src 自動 rewrite)', () => {
+  it('img/foo.png → img/foo.webp を 1 つ rewrite する', () => {
+    const html = '<img src="img/foo.png" alt="x">';
+    const out = rewriteHtmlForRename(html, [{ from: 'foo.png', to: 'foo.webp' }]);
+    expect(out).toBe('<img src="img/foo.webp" alt="x">');
+  });
+
+  it('複数 asset を全部 rewrite する', () => {
+    const html = '<img src="img/a.png"><img src="img/b.jpg"><img src="img/c.png">';
+    const out = rewriteHtmlForRename(html, [
+      { from: 'a.png', to: 'a.webp' },
+      { from: 'b.jpg', to: 'b.webp' },
+      { from: 'c.png', to: 'c.webp' },
+    ]);
+    expect(out).toBe('<img src="img/a.webp"><img src="img/b.webp"><img src="img/c.webp">');
+  });
+
+  it('img/ prefix がない参照は触らない (CSS/JS path 保護)', () => {
+    const html = '<link href="style/foo.png">\n<img src="assets/foo.png">';
+    const out = rewriteHtmlForRename(html, [{ from: 'foo.png', to: 'foo.webp' }]);
+    expect(out).toBe(html); // 不変
+  });
+
+  it('部分一致 (foo.png.bak) は rewrite しない', () => {
+    const html = '<a href="img/foo.png.bak">';
+    const out = rewriteHtmlForRename(html, [{ from: 'foo.png', to: 'foo.webp' }]);
+    expect(out).toBe(html);
+  });
+
+  it('srcset の空白区切りも rewrite する', () => {
+    const html = '<img srcset="img/a.png 1x, img/a@2x.png 2x">';
+    const out = rewriteHtmlForRename(html, [
+      { from: 'a.png', to: 'a.webp' },
+      { from: 'a@2x.png', to: 'a@2x.webp' },
+    ]);
+    expect(out).toBe('<img srcset="img/a.webp 1x, img/a@2x.webp 2x">');
+  });
+
+  it('from === to のエントリは skip (passthrough 時の no-op)', () => {
+    const html = '<img src="img/foo.gif">';
+    const out = rewriteHtmlForRename(html, [{ from: 'foo.gif', to: 'foo.gif' }]);
+    expect(out).toBe(html);
+  });
+
+  it('renameMap 空配列は byte 一致で素通し', () => {
+    const html = '<img src="img/foo.png">';
+    expect(rewriteHtmlForRename(html, [])).toBe(html);
+  });
+
+  it('特殊文字 (() を含む filename も escape して rewrite する', () => {
+    const html = '<img src="img/foo(1).png">';
+    const out = rewriteHtmlForRename(html, [{ from: 'foo(1).png', to: 'foo(1).webp' }]);
+    expect(out).toBe('<img src="img/foo(1).webp">');
   });
 });

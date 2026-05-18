@@ -35,8 +35,10 @@ sed 's|images/|img/|g' /path/to/index.html > /tmp/zuroku-deploy/index.html
 cp /path/to/images/*.png /tmp/zuroku-deploy/
 
 cd /tmp/zuroku-deploy
-zuroku publish ./index.html ./*.png --title "..." --no-compress
-# stdout last line is the public URL.
+zuroku publish ./index.html ./*.png --title "..."
+# - assets are compressed to WebP client-side (sharp, 85% quality, max 2000px long-edge)
+# - <img src="img/foo.png"> in the HTML is auto-rewritten to .webp on the fly (since v0.1.1)
+# - stdout last line is the public URL
 ```
 
 ## Commands
@@ -55,7 +57,8 @@ Run `zuroku <command> --help` for the full flag list.
 
 - `<img src>` must use the `img/` relative prefix (e.g. `<img src="img/foo.png">`); served route is `/p/:slug/img/:filename`.
 - Supported image types: PNG / JPEG / WebP / GIF. SVG is rejected.
-- Default behaviour is to convert PNG/JPEG to WebP at 85% quality, max 2000px long-edge. Pass `--no-compress` to keep filenames and bytes intact (you must then resize manually).
+- Default behaviour is to convert PNG/JPEG to WebP at 85% quality, max 2000px long-edge. The CLI auto-rewrites HTML `<img src>` from `.png` / `.jpg` to `.webp` to keep references valid (since v0.1.1).
+- Pass `--no-compress` to keep the original PNG/JPEG bytes and filenames intact (skip WebP). Useful when source images are already optimised.
 - HTML and each asset are capped at 5 MiB. Daily quota: 50 publishes / 500 MB per user.
 
 The CLI parses the HTML and verifies that every `<img src="img/...">` resolves to a positional asset argument, fail-fast with tagged error messages:

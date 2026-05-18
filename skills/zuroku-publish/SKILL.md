@@ -4,7 +4,7 @@ description: HTML + 関連画像を zuroku CLI で publish したい場面で発
 license: MIT
 metadata:
   author: AI-Driven-R-D-Dept
-  version: '0.1.0'
+  version: '0.1.1'
 user-invocable: true
 argument-hint: <html-path> [image-paths...] --title "..." [--no-compress] [--visibility private|curator] [--private]
 allowed-tools: Bash, Read, Edit, Write
@@ -17,18 +17,19 @@ allowed-tools: Bash, Read, Edit, Write
 ## TL;DR
 
 ```bash
-# HTML 内の <img src> を `img/<basename>` に揃える
+# HTML 内の <img src> を `img/<basename>` 形式に揃える (img/ prefix 必須)
 mkdir -p /tmp/zuroku-deploy
 sed 's|images/|img/|g' /path/to/index.html > /tmp/zuroku-deploy/index.html
 cp /path/to/images/*.png /tmp/zuroku-deploy/
 
 cd /tmp/zuroku-deploy
-zuroku publish ./index.html ./*.png --title "..." --no-compress
+zuroku publish ./index.html ./*.png --title "..."
+# - sharp で client-side WebP 圧縮 (85%、長辺 2000px) → 通信量 / 表示も軽量
+# - HTML 内 <img src="img/foo.png"> は CLI が自動で .webp に rewrite (v0.1.1+)
+# - 標準出力の最終行が公開 URL
 
 # 自分だけが見える private で上げたい場合
 zuroku publish ./index.html ./*.png --title "..." --private
-
-# 標準出力の最終行が公開 URL
 ```
 
 ## 制約
@@ -38,11 +39,11 @@ zuroku publish ./index.html ./*.png --title "..." --private
 - `images/`、`./assets/` 等で書かれていれば publish 前に sed で書き換える。
 - SVG (`<img src="img/foo.svg">`) は受け付けない。PNG / JPEG / WebP / GIF のみ。
 
-### R2. 圧縮 (`--no-compress`)
-- default は sharp で PNG/JPEG → WebP 85% に変換し、長辺 max 2000px。**filename 拡張子も `.webp` に変わる**。
-- HTML 側 `<img src="img/foo.png">` のままだと配信時 404 になる。圧縮するなら HTML を先に `.webp` に書き換える。
-- `--no-compress` を付ければ filename 不変 (HTML を触らずに済む。サイズが大きい場合は事前リサイズ推奨)。
-- GIF はアニメ保持のため compress しても passthrough される。
+### R2. 圧縮 (default ON、client-side で軽量化される)
+- default で sharp が PNG/JPEG → WebP 85%、長辺 max 2000px に変換 (帯域 / 表示の両方で大幅軽量化)。
+- 拡張子 `.png` → `.webp` の rename が発生するが、**HTML 内 `<img src="img/foo.png">` は CLI が自動で `.webp` に rewrite する** (v0.1.1+)。AI agent 側で sed は不要。
+- `--no-compress` を付けると original のまま upload (filename 不変、HTML も触らず)。サイズが大きい時は事前リサイズしないと R3 に当たる。
+- GIF はアニメ保持のため compress でも passthrough (filename 不変)。
 
 ### R3. サイズ上限
 - HTML: 5 MiB
@@ -116,7 +117,7 @@ URL=$(zuroku publish ./index.html ./img/*.png --title "..." 2>/dev/null | tail -
 | 症状 | 原因 | 対処 |
 |---|---|---|
 | `INVALID_INPUT [MISSING]` | HTML 内 src と asset の filename 不一致 | preflight メッセージの Suggested fixes を読む |
-| 配信ページで画像 404 | sharp 圧縮で filename が `.webp` に変わったが HTML 未更新 | `--no-compress` で再 publish or HTML を sed で書き換え |
+| 配信ページで画像 404 | (v0.1.1+ では自動 rewrite される。それ以前 / HTML を直接書き換えていた場合) basename 不一致。HTML の `<img src="img/...">` と asset 引数の filename を再確認 |
 | `UNSUPPORTED_MEDIA 415` | SVG / Content-Type 偽装 | PNG/JPEG/WebP/GIF のみ |
 | `BODY_TOO_LARGE 413` | ファイル 5 MiB 超過 | 事前リサイズ |
 | `QUOTA_EXCEEDED 429` | 1 日上限超過 | 翌 UTC midnight まで待つ |

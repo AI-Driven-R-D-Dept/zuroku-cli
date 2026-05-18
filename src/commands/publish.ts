@@ -13,6 +13,29 @@ import { loadRuntimeConfig, makeClient } from '../lib/config.js';
 const HTML_MAX_BYTES = 5 * 1024 * 1024; // 5 MiB
 
 /**
+ * 圧縮で rename された asset (foo.png → foo.webp) に合わせて、HTML 内の
+ * `<img src="img/foo.png">` 系の参照を `img/foo.webp` に置換する。
+ *
+ * - `img/` prefix を必須にすることで CSS/JS の同名 path を巻き込まない
+ *   (zuroku の R2 layout 規約)。
+ * - 部分一致 (`foo.png.bak`) を避けるため境界 lookahead を入れる:
+ *   引用符 / 空白 / `)` / `,` のいずれかが直後に来る場合のみ rewrite。
+ * - renameMap が空のときは byte 一致で素通し (--no-compress 等)。
+ */
+export function rewriteHtmlForRename(
+  html: string,
+  renameMap: ReadonlyArray<{ from: string; to: string }>,
+): string {
+  let out = html;
+  for (const { from, to } of renameMap) {
+    if (from === to) continue;
+    const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    out = out.replace(new RegExp(`(img/)${escaped}(?=["'\\s),])`, 'g'), `$1${to}`);
+  }
+  return out;
+}
+
+/**
  * HTML 内の `<img src="...">` / `<link href="...">` / `<script src="...">` /
  * `srcset` から、この project の asset として参照されている filename (basename) を
  * 抽出する。zuroku は `img/<basename>` を expected layout とするため、
@@ -72,13 +95,13 @@ function preflightErrorMessage(
   lines.push('Preflight check failed: HTML asset references do not match provided files.');
   lines.push('');
   lines.push(`HTML file: ${htmlPath}`);
-  lines.push(`Compress mode: ${compress ? 'ON (sharp WebP, --no-compress to disable)' : 'OFF (--no-compress)'}`);
+  lines.push(`Compress mode: ${compress ? 'ON (sharp WebP; HTML img src extensions are rewritten automatically)' : 'OFF (--no-compress)'}`);
   lines.push('');
   lines.push('zuroku layout requirement:');
   lines.push('  - HTML must reference assets as `img/<filename>` (relative to HTML location)');
   lines.push('  - Each <filename> must match one of the provided asset arguments (basename)');
-  lines.push('  - With sharp compression (default), filename extension changes (e.g. .png -> .webp)');
-  lines.push('    so the HTML <img src> must use the post-compress filename, OR pass --no-compress.');
+  lines.push('  - The CLI auto-rewrites `img/foo.png` -> `img/foo.webp` when compress is ON;');
+  lines.push('    you only need to pre-align extensions when --no-compress is set.');
   lines.push('');
 
   if (missingFromAssets.length) {
@@ -103,10 +126,10 @@ function preflightErrorMessage(
   }
 
   lines.push('Suggested fixes (for AI agents to choose):');
-  lines.push('  A) Rerun with --no-compress to keep PNG/JPEG filenames as-is.');
-  lines.push('  B) Rewrite HTML <img src> extensions to .webp before publishing:');
-  lines.push('     sed -i \'\' -e \'s|\\.png"|.webp"|g\' -e \'s|\\.jpg"|.webp"|g\' your.html');
-  lines.push('  C) Rename / re-export your asset files so basenames match the HTML refs.');
+  lines.push('  A) Ensure each <img src="img/foo.ext"> has a matching asset argument (foo.ext).');
+  lines.push('  B) If file extensions differ (e.g. HTML says foo.png but asset is foo.jpg),');
+  lines.push('     rename the asset or update the HTML to match.');
+  lines.push('  C) Use --no-compress if you must keep original PNG/JPEG filenames (skips WebP).');
   lines.push('');
   lines.push('To bypass this check (NOT recommended), set ZUROKU_SKIP_PREFLIGHT=1.');
   return lines.join('\n');
@@ -164,7 +187,11 @@ export function registerPublishCommand(parent: Command): void {
         info(`html: ${path.basename(htmlPath)} (${htmlStat.size} bytes)`);
 
         // ---- Assets -------------------------------------------------------
+        // 圧縮時 (default) は .png/.jpg/.jpeg の filename が .webp に rename される。
+        // HTML 側の <img src="img/foo.png"> をそのままにすると preflight が
+        // [MISSING] で fail するので、rename map を取って後段で HTML を自動 rewrite する。
         const assets: AssetUpload[] = [];
+        const renameMap: Array<{ from: string; to: string }> = [];
         for (const img of images) {
           const abs = path.resolve(img);
           const label = path.basename(abs);
@@ -174,6 +201,9 @@ export function registerPublishCommand(parent: Command): void {
           info(
             `asset: ${label} -> ${payload.filename} (${payload.buffer.byteLength} bytes, ${payload.contentType})`,
           );
+          if (label !== payload.filename) {
+            renameMap.push({ from: label, to: payload.filename });
+          }
           assets.push({
             filename: payload.filename,
             buffer: payload.buffer,
@@ -181,9 +211,17 @@ export function registerPublishCommand(parent: Command): void {
           });
         }
 
+        // ---- HTML auto-rewrite for compressed assets ----------------------
+        // --no-compress 時は renameMap が空なので no-op (byte 一致)。
+        const htmlOriginal = htmlBuf.toString('utf8');
+        const htmlText = renameMap.length > 0 ? rewriteHtmlForRename(htmlOriginal, renameMap) : htmlOriginal;
+        if (renameMap.length > 0 && htmlText !== htmlOriginal) {
+          info(`html: rewrote <img src> references for ${renameMap.length} compressed asset(s)`);
+        }
+        const htmlForUpload = htmlText !== htmlOriginal ? Buffer.from(htmlText, 'utf8') : htmlBuf;
+
         // ---- Preflight: HTML asset refs vs provided assets ----------------
         if (process.env.ZUROKU_SKIP_PREFLIGHT !== '1') {
-          const htmlText = htmlBuf.toString('utf8');
           const { references, expectedFilenames } = extractHtmlAssetRefs(htmlText);
           const providedFilenames = assets.map((a) => a.filename);
           const provided = new Set(providedFilenames);
@@ -242,7 +280,7 @@ export function registerPublishCommand(parent: Command): void {
         info(`publishing as "${opts.title}"${opts.slug ? ` (slug=${opts.slug})` : ''}${visLabel}...`);
 
         const input: Parameters<typeof client.publishProject>[0] = {
-          html: htmlBuf,
+          html: htmlForUpload,
           assets,
           title: opts.title,
         };
