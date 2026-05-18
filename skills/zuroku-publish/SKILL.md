@@ -4,7 +4,7 @@ description: HTML + 関連画像を zuroku CLI で publish したい場面で発
 license: MIT
 metadata:
   author: AI-Driven-R-D-Dept
-  version: '0.1.1'
+  version: '0.1.2'
 user-invocable: true
 argument-hint: <html-path> [image-paths...] --title "..." [--no-compress] [--visibility private|curator] [--private]
 allowed-tools: Bash, Read, Edit, Write

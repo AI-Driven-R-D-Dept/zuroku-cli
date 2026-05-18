@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { registerLoginCommand } from './commands/login.js';
 import { registerPublishCommand } from './commands/publish.js';
@@ -5,9 +8,15 @@ import { registerListCommand } from './commands/list.js';
 import { registerDeleteCommand } from './commands/delete.js';
 import { registerConfigCommand } from './commands/config.js';
 
-// package.json version is read at build time. Hard-code the constant — keeping
-// it in sync with package.json is part of the release checklist.
-const VERSION = '0.1.0';
+// Version は package.json から起動時に読む (release checklist 漏れによる
+// hardcode drift を構造的に防ぐ)。dist/cli.js から見て ../package.json。
+function readPackageVersion(): string {
+  const pkgPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { version?: unknown };
+  return typeof pkg.version === 'string' ? pkg.version : '0.0.0';
+}
+
+const VERSION = readPackageVersion();
 
 const program = new Command();
 
