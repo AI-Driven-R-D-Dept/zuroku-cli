@@ -1,6 +1,6 @@
 {
   "name": "@zuroku/cli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "type": "module",
   "description": "Command-line publisher for zuroku — upload AI-generated graphic-recording HTML + assets to your zuroku instance.",
   "bin": {
