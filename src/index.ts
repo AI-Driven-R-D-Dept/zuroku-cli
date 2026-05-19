@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { registerLoginCommand } from './commands/login.js';
 import { registerPublishCommand } from './commands/publish.js';
+import { registerUpdateCommand } from './commands/update.js';
 import { registerListCommand } from './commands/list.js';
 import { registerDeleteCommand } from './commands/delete.js';
 import { registerConfigCommand } from './commands/config.js';
@@ -27,6 +28,7 @@ program
 
 registerLoginCommand(program);
 registerPublishCommand(program);
+registerUpdateCommand(program);
 registerListCommand(program);
 registerDeleteCommand(program);
 registerConfigCommand(program);
