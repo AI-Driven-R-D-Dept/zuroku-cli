@@ -9,6 +9,7 @@ import {
 } from '@zuroku/core';
 import { fatal, info, success, warn } from '../lib/console.js';
 import { loadRuntimeConfig, makeClient } from '../lib/config.js';
+import { scanLocalPathLeaks, formatLeakReport } from '../lib/preflight.js';
 
 const HTML_MAX_BYTES = 5 * 1024 * 1024; // 5 MiB
 
@@ -43,7 +44,7 @@ export function rewriteHtmlForRename(
  *
  * 戻り値: { references: 抽出した raw URL の配列、 expectedFilenames: img/ 直下の basename }
  */
-function extractHtmlAssetRefs(html: string): { references: string[]; expectedFilenames: Set<string> } {
+export function extractHtmlAssetRefs(html: string): { references: string[]; expectedFilenames: Set<string> } {
   const references: string[] = [];
   const expectedFilenames = new Set<string>();
   const ATTR_RE = /(?:src|href|poster)\s*=\s*["']([^"']+)["']/gi;
@@ -75,7 +76,7 @@ function extractHtmlAssetRefs(html: string): { references: string[]; expectedFil
  * AI agent 向けの詳細エラーメッセージを生成。
  * preflight で HTML と提供 asset の不整合を検知したとき呼ぶ。
  */
-function preflightErrorMessage(
+export function preflightErrorMessage(
   htmlPath: string,
   htmlRefs: string[],
   htmlExpected: Set<string>,
@@ -219,6 +220,18 @@ export function registerPublishCommand(parent: Command): void {
           info(`html: rewrote <img src> references for ${renameMap.length} compressed asset(s)`);
         }
         const htmlForUpload = htmlText !== htmlOriginal ? Buffer.from(htmlText, 'utf8') : htmlBuf;
+
+        // ---- Preflight: local-path leak scan (asset 参照外も含む全文) -----
+        if (process.env.ZUROKU_SKIP_PREFLIGHT !== '1') {
+          const leaks = scanLocalPathLeaks(htmlText);
+          for (const w of leaks.filter((l) => l.severity === 'warn')) {
+            warn(`local-path hint at line ${w.line} [${w.pattern}]: ${w.match}`);
+          }
+          const errors = leaks.filter((l) => l.severity === 'error');
+          if (errors.length > 0) {
+            throw new ZurokuError('LOCAL_PATH_LEAK', 0, formatLeakReport(htmlPath, errors));
+          }
+        }
 
         // ---- Preflight: HTML asset refs vs provided assets ----------------
         if (process.env.ZUROKU_SKIP_PREFLIGHT !== '1') {
