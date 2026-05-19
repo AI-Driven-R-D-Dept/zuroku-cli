@@ -4,7 +4,7 @@ description: HTML + 関連画像を zuroku CLI で publish したい場面で発
 license: MIT
 metadata:
   author: AI-Driven-R-D-Dept
-  version: '0.1.2'
+  version: '0.1.3'
 user-invocable: true
 argument-hint: <html-path> [image-paths...] --title "..." [--no-compress] [--visibility private|curator] [--private]
 allowed-tools: Bash, Read, Edit, Write
@@ -72,6 +72,33 @@ zuroku publish ./index.html ./*.png --title "..." --private
 
 緊急 bypass: `ZUROKU_SKIP_PREFLIGHT=1 zuroku publish ...` (debug 用、本番では使わない)。
 
+### R5. local-path leak preflight (v0.1.3+)
+
+preflight は asset 参照だけでなく **HTML 全体を text として scan** し、viewer 環境では絶対に解決しない作者マシン path を見つけたら `LOCAL_PATH_LEAK` で fail-fast する:
+
+| pattern | severity | 例 |
+|---|---|---|
+| `/Users/<name>/...` | error | macOS の個人 home |
+| `/home/<name>/...` | error | Linux の個人 home |
+| `file://...` | error | local file URI |
+| `C:\Users\...` / `Documents\` / `Desktop\` | error | Windows の個人 path |
+| `/var/folders/...` | error | macOS の TMPDIR layout |
+| `~/...` | warn | warn のみ、publish は通る |
+
+検知された場合は **HTML 側を直して** から再 publish する (絶対パスを削除 / 公開 URL に置換 / ファイル名だけ抽象的に言及)。`<code>` ブロックや本文中の引用にも leak しやすい。
+
+## update (republish) — slug を維持して上書き (v0.1.3+)
+
+```bash
+# slug でも id でも OK。HTML auto-rewrite / preflight は publish と同じ。
+zuroku update my-cool-page ./index.html ./img/*.png
+```
+
+- 既存 project の HTML と asset を **完全置換** して同じ slug / URL で再公開する (`-2` は付かない)。
+- asset は **全置換**。残したい画像も含めて positional 引数で渡すこと (省略すると 0 件で送られる)。
+- 新しい URL を発行したい場合は `update` でなく `publish` を使う。
+- 内部的には `republish-init` → `uploadHtml`/`uploadAsset` (新 token) → `republish` の 3 段階。失敗しても manifest swap (3 段目) までは旧版が viewer に出続ける。
+
 ## 認証
 
 ```bash
@@ -117,6 +144,7 @@ URL=$(zuroku publish ./index.html ./img/*.png --title "..." 2>/dev/null | tail -
 | 症状 | 原因 | 対処 |
 |---|---|---|
 | `INVALID_INPUT [MISSING]` | HTML 内 src と asset の filename 不一致 | preflight メッセージの Suggested fixes を読む |
+| `LOCAL_PATH_LEAK` | HTML 本文に `/Users/...` 等の作者マシン path が混入 (v0.1.3+ で検知) | HTML 側で絶対パスを削除 / 公開 URL に置換 / ファイル名だけ抽象的に言及 |
 | 配信ページで画像 404 | (v0.1.1+ では自動 rewrite される。それ以前 / HTML を直接書き換えていた場合) basename 不一致。HTML の `<img src="img/...">` と asset 引数の filename を再確認 |
 | `UNSUPPORTED_MEDIA 415` | SVG / Content-Type 偽装 | PNG/JPEG/WebP/GIF のみ |
 | `BODY_TOO_LARGE 413` | ファイル 5 MiB 超過 | 事前リサイズ |
