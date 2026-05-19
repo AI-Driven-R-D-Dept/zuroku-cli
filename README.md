@@ -47,11 +47,23 @@ zuroku publish ./index.html ./*.png --title "..."
 |---|---|
 | `zuroku auth login` | Save the API token to `~/.config/zuroku/config.json` (mode `0600`). |
 | `zuroku publish <html> <assets...>` | Upload an HTML page and its referenced images. |
+| `zuroku update <slug-or-id> <html> [images...]` | Republish an existing project, keeping its slug / URL (full asset replacement). |
 | `zuroku list` | List the publishes owned by the current token. |
 | `zuroku delete <slug>` | Soft-delete a publish. |
 | `zuroku config (get\|set\|unset) <key>` | Read / write per-user CLI defaults (e.g. `default-visibility`). |
 
 Run `zuroku <command> --help` for the full flag list.
+
+### Update an existing publish
+
+`zuroku update` republishes the same slug / URL (no `-2` suffix). The asset set is fully replaced — pass every image you want present after the update.
+
+```bash
+# slug or id (both work). HTML auto-rewrite & preflight are identical to publish.
+zuroku update my-cool-page ./index.html ./img/*.png
+```
+
+Use this when you tweak the HTML or swap images but want the URL stable. To get a brand-new URL instead, `zuroku publish` again.
 
 ## HTML / asset constraints
 
@@ -68,6 +80,7 @@ The CLI parses the HTML and verifies that every `<img src="img/...">` resolves t
 | `[MISSING]` | HTML references an image not in the asset list. |
 | `[UNUSED]` | Asset passed in but not referenced from HTML. |
 | `[WRONG-PATH]` | `<img src>` does not start with `img/`. |
+| `LOCAL_PATH_LEAK` | HTML body contains an author-machine path (`/Users/…`, `/home/…`, `file://`, `C:\Users\…`, `/var/folders/…`). These 404 for viewers — strip them before publishing. Bypass with `ZUROKU_SKIP_PREFLIGHT=1` (debug only). |
 
 ## Visibility
 
