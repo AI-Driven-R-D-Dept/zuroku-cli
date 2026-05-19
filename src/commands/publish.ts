@@ -14,24 +14,42 @@ import { scanLocalPathLeaks, formatLeakReport } from '../lib/preflight.js';
 const HTML_MAX_BYTES = 5 * 1024 * 1024; // 5 MiB
 
 /**
- * 圧縮で rename された asset (foo.png → foo.webp) に合わせて、HTML 内の
- * `<img src="img/foo.png">` 系の参照を `img/foo.webp` に置換する。
+ * HTML 内の asset 参照を zuroku の layout 規約 (`img/<final-filename>`) に正規化する。
  *
- * - `img/` prefix を必須にすることで CSS/JS の同名 path を巻き込まない
- *   (zuroku の R2 layout 規約)。
+ * 対応する 2 種類の差分:
+ *   1. ディレクトリ名揺れ: `images/foo.png` (skill 出力に多い複数形) → `img/foo.png`
+ *   2. 拡張子 rename: 圧縮で `foo.png` → `foo.webp` になったケース
+ *
+ * - 単数 `img/` と複数 `images/` のみマッチさせる。`assets/` `style/` `js/` は触らない
+ *   (CSS/JS path 保護)。
  * - 部分一致 (`foo.png.bak`) を避けるため境界 lookahead を入れる:
  *   引用符 / 空白 / `)` / `,` のいずれかが直後に来る場合のみ rewrite。
- * - renameMap が空のときは byte 一致で素通し (--no-compress 等)。
+ * - renameMap・providedFilenames が両方空のときは byte 一致で素通し。
+ *
+ * @param renameMap         拡張子変換 (`{from: 'foo.png', to: 'foo.webp'}`) のリスト
+ * @param providedFilenames upload する最終 filename 一覧。`images/<name>` → `img/<name>` の
+ *                          path 正規化を駆動するため、rename が無い asset でも entry が必要。
+ *                          省略時は renameMap のみで動作 (拡張子変換だけ)。
  */
 export function rewriteHtmlForRename(
   html: string,
   renameMap: ReadonlyArray<{ from: string; to: string }>,
+  providedFilenames: ReadonlyArray<string> = [],
 ): string {
+  // 統合 mapping: HTML に出現しうる basename → server に upload する最終 filename
+  // - provided は identity (path 正規化用)
+  // - renameMap が後勝ちで上書き (拡張子変換)
+  const map = new Map<string, string>();
+  for (const f of providedFilenames) map.set(f, f);
+  for (const { from, to } of renameMap) map.set(from, to);
+
   let out = html;
-  for (const { from, to } of renameMap) {
-    if (from === to) continue;
+  for (const [from, to] of map) {
     const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    out = out.replace(new RegExp(`(img/)${escaped}(?=["'\\s),])`, 'g'), `$1${to}`);
+    out = out.replace(
+      new RegExp(`(?:img|images)/${escaped}(?=["'\\s),])`, 'g'),
+      `img/${to}`,
+    );
   }
   return out;
 }
@@ -212,12 +230,14 @@ export function registerPublishCommand(parent: Command): void {
           });
         }
 
-        // ---- HTML auto-rewrite for compressed assets ----------------------
-        // --no-compress 時は renameMap が空なので no-op (byte 一致)。
+        // ---- HTML auto-rewrite (path 正規化 + 拡張子 rename) -----------------
+        // providedFilenames を渡すことで `images/foo.png` → `img/foo.webp` (or .png)
+        // の path 正規化も走る (--no-compress でも有効)。
         const htmlOriginal = htmlBuf.toString('utf8');
-        const htmlText = renameMap.length > 0 ? rewriteHtmlForRename(htmlOriginal, renameMap) : htmlOriginal;
-        if (renameMap.length > 0 && htmlText !== htmlOriginal) {
-          info(`html: rewrote <img src> references for ${renameMap.length} compressed asset(s)`);
+        const providedFilenames = assets.map((a) => a.filename);
+        const htmlText = rewriteHtmlForRename(htmlOriginal, renameMap, providedFilenames);
+        if (htmlText !== htmlOriginal) {
+          info(`html: rewrote img src references (path normalize / extension rename)`);
         }
         const htmlForUpload = htmlText !== htmlOriginal ? Buffer.from(htmlText, 'utf8') : htmlBuf;
 
@@ -236,7 +256,6 @@ export function registerPublishCommand(parent: Command): void {
         // ---- Preflight: HTML asset refs vs provided assets ----------------
         if (process.env.ZUROKU_SKIP_PREFLIGHT !== '1') {
           const { references, expectedFilenames } = extractHtmlAssetRefs(htmlText);
-          const providedFilenames = assets.map((a) => a.filename);
           const provided = new Set(providedFilenames);
           const missing = [...expectedFilenames].filter((f) => !provided.has(f));
           const nonImg = references.filter(

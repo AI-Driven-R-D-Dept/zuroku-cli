@@ -149,11 +149,12 @@ export function registerUpdateCommand(parent: Command): void {
           });
         }
 
-        // ---- HTML auto-rewrite for compressed assets ----------------------
+        // ---- HTML auto-rewrite (path 正規化 + 拡張子 rename) -----------------
         const htmlOriginal = htmlBuf.toString('utf8');
-        const htmlText = renameMap.length > 0 ? rewriteHtmlForRename(htmlOriginal, renameMap) : htmlOriginal;
-        if (renameMap.length > 0 && htmlText !== htmlOriginal) {
-          info(`html: rewrote <img src> references for ${renameMap.length} compressed asset(s)`);
+        const providedFilenames = assets.map((a) => a.filename);
+        const htmlText = rewriteHtmlForRename(htmlOriginal, renameMap, providedFilenames);
+        if (htmlText !== htmlOriginal) {
+          info(`html: rewrote img src references (path normalize / extension rename)`);
         }
         const htmlForUpload = htmlText !== htmlOriginal ? Buffer.from(htmlText, 'utf8') : htmlBuf;
 
@@ -172,7 +173,6 @@ export function registerUpdateCommand(parent: Command): void {
         // ---- Preflight ----------------------------------------------------
         if (process.env.ZUROKU_SKIP_PREFLIGHT !== '1') {
           const { references, expectedFilenames } = extractHtmlAssetRefs(htmlText);
-          const providedFilenames = assets.map((a) => a.filename);
           const provided = new Set(providedFilenames);
           const missing = [...expectedFilenames].filter((f) => !provided.has(f));
           const nonImg = references.filter(

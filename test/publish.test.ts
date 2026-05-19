@@ -121,10 +121,32 @@ describe('rewriteHtmlForRename (compress 時の HTML img src 自動 rewrite)', (
     expect(out).toBe('<img src="img/a.webp"><img src="img/b.webp"><img src="img/c.webp">');
   });
 
-  it('img/ prefix がない参照は触らない (CSS/JS path 保護)', () => {
+  it('img/ や images/ 以外の prefix (assets/, style/) は触らない (CSS/JS path 保護)', () => {
     const html = '<link href="style/foo.png">\n<img src="assets/foo.png">';
     const out = rewriteHtmlForRename(html, [{ from: 'foo.png', to: 'foo.webp' }]);
     expect(out).toBe(html); // 不変
+  });
+
+  it('images/ (複数形) prefix を img/ に正規化しつつ拡張子も rewrite する', () => {
+    const html = '<img src="images/foo.png"><img src="images/bar.jpg">';
+    const out = rewriteHtmlForRename(html, [
+      { from: 'foo.png', to: 'foo.webp' },
+      { from: 'bar.jpg', to: 'bar.webp' },
+    ]);
+    expect(out).toBe('<img src="img/foo.webp"><img src="img/bar.webp">');
+  });
+
+  it('--no-compress 相当: renameMap 空 + providedFilenames で images/ → img/ 正規化', () => {
+    const html = '<img src="images/foo.png">';
+    const out = rewriteHtmlForRename(html, [], ['foo.png']);
+    expect(out).toBe('<img src="img/foo.png">');
+  });
+
+  it('providedFilenames は path 正規化のみで拡張子は変えない', () => {
+    const html = '<img src="images/foo.gif">';
+    // GIF は passthrough なので filename そのまま
+    const out = rewriteHtmlForRename(html, [], ['foo.gif']);
+    expect(out).toBe('<img src="img/foo.gif">');
   });
 
   it('部分一致 (foo.png.bak) は rewrite しない', () => {
