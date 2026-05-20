@@ -23,6 +23,7 @@ const HTML_MAX_BYTES = 5 * 1024 * 1024; // 5 MiB
 
 interface UpdateOpts {
   compress: boolean;
+  keepAssets: boolean;
   baseUrl?: string;
 }
 
@@ -102,6 +103,10 @@ export function registerUpdateCommand(parent: Command): void {
     .argument('<html>', 'Path to the new HTML file (<= 5 MiB)')
     .argument('[images...]', 'Image files to upload as the new asset set (full replacement)')
     .option('--no-compress', 'Skip image compression (upload originals)')
+    .option(
+      '--keep-assets',
+      'Update HTML only and keep all existing images untouched (ignores [images...])',
+    )
     .option('-u, --base-url <url>', 'Override API base URL')
     .action(async (slugOrId: string, htmlArg: string, images: string[], opts: UpdateOpts) => {
       try {
@@ -129,9 +134,16 @@ export function registerUpdateCommand(parent: Command): void {
         info(`html: ${path.basename(htmlPath)} (${htmlStat.size} bytes)`);
 
         // ---- Assets (publish と同じ rule: compress 時は .webp に rename) -------
+        // keep-assets モードでは画像を一切送らず既存 asset を温存する。引数で渡された
+        // 画像は無視する (誤って渡しても削除事故にならないよう warn だけ出す)。
         const assets: AssetUpload[] = [];
         const renameMap: Array<{ from: string; to: string }> = [];
-        for (const img of images) {
+        if (opts.keepAssets && images.length > 0) {
+          warn(
+            `--keep-assets specified: ignoring ${images.length} image arg(s); existing images are kept as-is`,
+          );
+        }
+        for (const img of opts.keepAssets ? [] : images) {
           const abs = path.resolve(img);
           const label = path.basename(abs);
           const payload = opts.compress
@@ -187,7 +199,9 @@ export function registerUpdateCommand(parent: Command): void {
         }
 
         // ---- Preflight ----------------------------------------------------
-        if (process.env.ZUROKU_SKIP_PREFLIGHT !== '1') {
+        // keep-assets モードでは HTML が参照する img/* はサーバ側に温存されている前提
+        // (ローカルに無くて当然) なので asset 欠落チェックは行わない。
+        if (!opts.keepAssets && process.env.ZUROKU_SKIP_PREFLIGHT !== '1') {
           const { references, expectedFilenames } = extractHtmlAssetRefs(htmlText);
           const provided = new Set(providedFilenames);
           const missing = [...expectedFilenames].filter((f) => !provided.has(f));
@@ -211,11 +225,18 @@ export function registerUpdateCommand(parent: Command): void {
         const projectId = await resolveProjectId(client, slugOrId);
         info(`project_id=${projectId}`);
 
-        info(`republish-init: declaring ${assets.length} asset(s)...`);
+        const initBody = opts.keepAssets
+          ? { keep_assets: true }
+          : { asset_filenames: assets.map((a) => a.filename) };
+        info(
+          opts.keepAssets
+            ? 'republish-init: keep-assets mode (HTML only, existing images preserved)...'
+            : `republish-init: declaring ${assets.length} asset(s)...`,
+        );
         const init = await callRepublishApi<RepublishInitResponse>(
           config,
           `/api/projects/${encodeURIComponent(projectId)}/republish-init`,
-          { asset_filenames: assets.map((a) => a.filename) },
+          initBody,
         );
 
         info('uploading html + assets...');
