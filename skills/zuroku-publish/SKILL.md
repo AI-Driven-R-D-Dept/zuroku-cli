@@ -118,6 +118,19 @@ zuroku update my-cool-page ./index.html ./img/*.png
 - 新しい URL を発行したい場合は `update` でなく `publish` を使う。
 - 内部的には `republish-init` → `uploadHtml`/`uploadAsset` (新 token) → `republish` の 3 段階。失敗しても manifest swap (3 段目) までは旧版が viewer に出続ける。
 
+### `--keep-assets` — 本文だけ直して画像はそのまま (v0.1.5+)
+
+```bash
+# HTML だけ差し替え、既存の画像は一切触らない。img 引数は不要 (渡しても無視)。
+zuroku update my-cool-page ./index.html --keep-assets
+```
+
+- 既存画像を **温存** したまま HTML だけ更新する。全置換モードと違い画像の再アップロード不要。
+- 「文言だけ直したい」「typo 修正」など本文のみの更新で、画像の渡し忘れによる一括削除事故を防げる。
+- asset 欠落 preflight はスキップされる (HTML が参照する `img/*` はサーバ側に温存されている前提)。
+- thumbnail / OG 画像も従来のまま維持される。
+- 画像を **足す / 差し替える / 消す** ときは `--keep-assets` を付けず、全画像を positional で渡す全置換モードを使う。
+
 ## 認証
 
 ```bash
