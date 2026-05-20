@@ -182,7 +182,7 @@ export function registerPublishCommand(parent: Command): void {
     .option('-u, --base-url <url>', 'Override API base URL')
     .option(
       '-V, --visibility <mode>',
-      "Visibility: private | curator. Server reserves 'public' and rejects it. Falls back to --private then ~/.config/zuroku/config.json then server default (curator) when omitted.",
+      "Visibility: private | curator | public. 'public' is viewable by anyone with the link (kept out of timeline/search, served noindex); it can be set per publish but not stored as a config default. Falls back to --private then ~/.config/zuroku/config.json then server default (curator) when omitted.",
     )
     .option('--private', 'Shortcut for --visibility private (wins over --visibility if both are set)')
     .action(async (htmlArg: string, images: string[], opts: PublishOpts) => {

@@ -51,14 +51,15 @@ zuroku publish ./index.html ./*.png --title "..." --private
 - 1 日: 50 publish / 500 MB
 
 ### R4. visibility (公開範囲)
-- `-V, --visibility <mode>`: `private` (本人のみ) / `curator` (curator role を持つ Discord メンバーのみ閲覧可)。
+- `-V, --visibility <mode>`: `private` (本人のみ) / `curator` (curator role を持つ Discord メンバーのみ閲覧可) / `public` (リンクを知る誰でも閲覧可)。
 - `--private`: `--visibility private` のショートカット。`-V curator` と併用された場合は `--private` が勝つ (CLI が warn を出す)。
 - どちらも未指定なら順に下記の優先順で解決:
   1. CLI flag (`--private` > `--visibility`)
   2. `~/.config/zuroku/config.json` の `default_visibility` (`zuroku config set default-visibility ...`)
   3. server default = `curator`
-- **`public` は server 予約語**で、CLI も server も reject する。一般公開したい場合は curator にした上で Web UI から個別操作する。
-- private のまま publish 後に visibility を変えたいときは stderr に表示される `manage visibility: <app>/settings/projects` の URL から切り替える。
+- **`public` は per-publish で指定可能** (`--visibility public`)。リンクを知る誰でも閲覧できるが、アプリ内 timeline/検索には出さず `X-Robots-Tag: noindex,nofollow` で配信される (リンク共有 / SNS unfurl 用、SEO index はしない)。
+  - ただし **`public` を `config set default-visibility` のデフォルトには保存できない** (公開は毎回明示的に選ぶべきで、暗黙のデフォルトにはしない設計)。
+- private のまま publish 後に visibility を変えたいときは stderr に表示される `manage visibility: <app>/settings/projects` の URL から切り替える (Web UI からは public への切替も可)。
 
 ## CLI が publish 前に弾くケース
 
@@ -151,7 +152,7 @@ zuroku config get                               # 一覧
 ```
 
 config は `~/.config/zuroku/config.json` に `0600` で保存される (`XDG_CONFIG_HOME` 尊重)。
-`public` は server 予約のため `set` でも reject される。`publish` は flag 未指定時に config を fallback する (info 行 `visibility: <mode> (from config default_visibility)` が出る)。
+`default-visibility` に設定できるのは `private` / `curator` のみ。**`public` は `set` で reject される** (公開は per-publish で `--visibility public` を明示する設計で、暗黙のデフォルトにはしない)。`publish` は flag 未指定時に config を fallback する (info 行 `visibility: <mode> (from config default_visibility)` が出る)。
 
 ## list / delete
 
