@@ -129,6 +129,7 @@ zuroku update my-cool-page ./index.html --keep-assets
 - 既存画像を **温存** したまま HTML だけ更新する。全置換モードと違い画像の再アップロード不要。
 - 「文言だけ直したい」「typo 修正」など本文のみの更新で、画像の渡し忘れによる一括削除事故を防げる。
 - asset 欠落 preflight はスキップされる (HTML が参照する `img/*` はサーバ側に温存されている前提)。
+  - ただし新 HTML が**サーバに無い `img/*` を参照している**場合は CLI が warn を出す (`--keep-assets: HTML references img/ files not present on the server`)。「本文だけ直す」つもりで画像参照名を変えると沈黙して 404 になる事故を防ぐためのもの。warn が出たら参照名を直すか、`--keep-assets` を外して全画像を渡す全置換モードに切り替える。
 - thumbnail / OG 画像も従来のまま維持される。
 - 画像を **足す / 差し替える / 消す** ときは `--keep-assets` を付けず、全画像を positional で渡す全置換モードを使う。
 

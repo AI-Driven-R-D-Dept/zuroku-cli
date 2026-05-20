@@ -95,6 +95,26 @@ async function callRepublishApi<T>(
   return (await res.json()) as T;
 }
 
+/**
+ * 既存 project の asset filename 一覧をサーバから取得する (GET /api/projects/:id)。
+ * --keep-assets で「HTML が参照する img/ がサーバに温存されているか」を照合し、
+ * 参照名を変えたまま keep-assets すると沈黙して 404 になる事故を warn で防ぐため。
+ */
+async function fetchProjectAssetFilenames(
+  config: ZurokuConfig,
+  projectId: string,
+): Promise<Set<string>> {
+  const base = config.base_url.replace(/\/+$/, '');
+  const res = await fetch(`${base}/api/projects/${encodeURIComponent(projectId)}`, {
+    headers: { Accept: 'application/json', Authorization: `Bearer ${config.token}` },
+  });
+  if (!res.ok) {
+    throw new Error(`GET /api/projects/${projectId} -> ${res.status}`);
+  }
+  const j = (await res.json()) as { assets?: Array<{ filename: string }> };
+  return new Set((j.assets ?? []).map((a) => a.filename));
+}
+
 export function registerUpdateCommand(parent: Command): void {
   parent
     .command('update')
@@ -224,6 +244,31 @@ export function registerUpdateCommand(parent: Command): void {
         info(`resolving "${slugOrId}"...`);
         const projectId = await resolveProjectId(client, slugOrId);
         info(`project_id=${projectId}`);
+
+        // ---- keep-assets: HTML 画像参照とサーバ既存 asset の照合 (warn) ----------
+        // keep-assets は asset 欠落 preflight をスキップするため、HTML が前回と違う
+        // 画像名 (img/b.webp 等) を参照していても沈黙して通り、本番で 404 になる。
+        // 「本文だけ直す」つもりの agent が参照名を変えた事故を warn で気付かせる
+        // (republish 自体は止めない: keep-assets はユーザーの明示的選択)。
+        if (opts.keepAssets && process.env.ZUROKU_SKIP_PREFLIGHT !== '1') {
+          try {
+            const existing = await fetchProjectAssetFilenames(config, projectId);
+            const { expectedFilenames } = extractHtmlAssetRefs(htmlText);
+            const missing = [...expectedFilenames].filter((f) => !existing.has(f));
+            if (missing.length > 0) {
+              warn(
+                '--keep-assets: HTML references img/ files not present on the server ' +
+                  '(these will 404 — re-run without --keep-assets and pass every image to replace the asset set):',
+              );
+              for (const f of missing) warn(`  - img/${f}`);
+            }
+          } catch (e) {
+            // 取得失敗は致命ではない (republish は続行)。照合だけ skip。
+            warn(
+              `--keep-assets: could not verify existing assets (${(e as Error).message ?? String(e)}); skipping reference check`,
+            );
+          }
+        }
 
         const initBody = opts.keepAssets
           ? { keep_assets: true }
