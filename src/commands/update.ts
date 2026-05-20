@@ -40,7 +40,10 @@ interface RepublishResponse {
   published_at?: number;
 }
 
-const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
+// ULID は大文字限定 (server の ulid() は常に大文字、slug は小文字のみ)。
+// case-insensitive にすると 26 文字・ハイフン無しの合法 slug を id 誤判定して
+// list() 解決を skip → 静かに 404 になる。core client の looksLikeId と同一判定。
+const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function looksLikeId(s: string): boolean {
