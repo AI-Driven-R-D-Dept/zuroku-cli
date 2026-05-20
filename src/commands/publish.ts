@@ -47,8 +47,12 @@ export function rewriteHtmlForRename(
   let out = html;
   for (const [from, to] of map) {
     const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // 境界 lookahead: 引用符 / 空白 / ) , の他に `>` も許す。`<img src=img/foo.png>` の
+    // ような unquoted 属性で src が `>` 直前に来るケースを取りこぼすと、compress の
+    // .png→.webp rename が効かず本番ページが .png 404 になる。`.bak` 等の部分一致は
+    // 直後が `.` なので引き続き弾かれる。
     out = out.replace(
-      new RegExp(`(?:img|images)/${escaped}(?=["'\\s),])`, 'g'),
+      new RegExp(`(?:img|images)/${escaped}(?=["'\\s),>])`, 'g'),
       `img/${to}`,
     );
   }

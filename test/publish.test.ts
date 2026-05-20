@@ -180,4 +180,16 @@ describe('rewriteHtmlForRename (compress 時の HTML img src 自動 rewrite)', (
     const out = rewriteHtmlForRename(html, [{ from: 'foo(1).png', to: 'foo(1).webp' }]);
     expect(out).toBe('<img src="img/foo(1).webp">');
   });
+
+  it('unquoted 属性 (src=img/foo.png>) も rewrite する (`>` 境界)', () => {
+    const html = '<img src=img/foo.png>';
+    const out = rewriteHtmlForRename(html, [{ from: 'foo.png', to: 'foo.webp' }]);
+    expect(out).toBe('<img src=img/foo.webp>');
+  });
+
+  it('`>` 境界を足しても部分一致 (img/foo.png.bak) は rewrite しない', () => {
+    const html = '<a href="img/foo.png.bak">';
+    const out = rewriteHtmlForRename(html, [{ from: 'foo.png', to: 'foo.webp' }]);
+    expect(out).toBe(html);
+  });
 });
