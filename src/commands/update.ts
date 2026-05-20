@@ -12,6 +12,7 @@ import {
 import { fatal, info, success, warn } from '../lib/console.js';
 import { loadRuntimeConfig, makeClient } from '../lib/config.js';
 import { scanLocalPathLeaks, formatLeakReport } from '../lib/preflight.js';
+import { ensureNoReferrerForExternal } from '../lib/referrer-policy.js';
 import {
   extractHtmlAssetRefs,
   preflightErrorMessage,
@@ -152,10 +153,25 @@ export function registerUpdateCommand(parent: Command): void {
         // ---- HTML auto-rewrite (path 正規化 + 拡張子 rename) -----------------
         const htmlOriginal = htmlBuf.toString('utf8');
         const providedFilenames = assets.map((a) => a.filename);
-        const htmlText = rewriteHtmlForRename(htmlOriginal, renameMap, providedFilenames);
+        let htmlText = rewriteHtmlForRename(htmlOriginal, renameMap, providedFilenames);
         if (htmlText !== htmlOriginal) {
           info(`html: rewrote img src references (path normalize / extension rename)`);
         }
+
+        // ---- HTML auto-rewrite (hotlink protection: 外部 subresource に referrerpolicy) -----
+        const rp = ensureNoReferrerForExternal(htmlText);
+        htmlText = rp.html;
+        if (rp.added.length > 0) {
+          info(
+            `html: added referrerpolicy="no-referrer" to ${rp.added.length} external <img>/<iframe> (hotlink protection)`,
+          );
+        }
+        for (const w of rp.warnings) {
+          warn(
+            `<${w.tag}> at line ${w.line} has referrerpolicy="${w.existing}" (recommended: "no-referrer" for hotlink-protected hosts): ${w.src}`,
+          );
+        }
+
         const htmlForUpload = htmlText !== htmlOriginal ? Buffer.from(htmlText, 'utf8') : htmlBuf;
 
         // ---- Preflight: local-path leak scan (asset 参照外も含む全文) -----

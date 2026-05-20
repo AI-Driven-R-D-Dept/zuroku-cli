@@ -10,6 +10,7 @@ import {
 import { fatal, info, success, warn } from '../lib/console.js';
 import { loadRuntimeConfig, makeClient } from '../lib/config.js';
 import { scanLocalPathLeaks, formatLeakReport } from '../lib/preflight.js';
+import { ensureNoReferrerForExternal } from '../lib/referrer-policy.js';
 
 const HTML_MAX_BYTES = 5 * 1024 * 1024; // 5 MiB
 
@@ -235,10 +236,29 @@ export function registerPublishCommand(parent: Command): void {
         // の path 正規化も走る (--no-compress でも有効)。
         const htmlOriginal = htmlBuf.toString('utf8');
         const providedFilenames = assets.map((a) => a.filename);
-        const htmlText = rewriteHtmlForRename(htmlOriginal, renameMap, providedFilenames);
+        let htmlText = rewriteHtmlForRename(htmlOriginal, renameMap, providedFilenames);
         if (htmlText !== htmlOriginal) {
           info(`html: rewrote img src references (path normalize / extension rename)`);
         }
+
+        // ---- HTML auto-rewrite (hotlink protection: 外部 subresource に referrerpolicy) -----
+        // 配信ドメインを Referer に載せると X / 一部 CDN / 報道サイトが hotlink protection で
+        // 403 を返す (curl では 200 が返るのでローカル検証では気付けない)。
+        // <img src="https://..."> / <iframe src="https://..."> に referrerpolicy="no-referrer"
+        // を自動付与し、agent が忘れても publish ページが描画破綻しないようにする。
+        const rp = ensureNoReferrerForExternal(htmlText);
+        htmlText = rp.html;
+        if (rp.added.length > 0) {
+          info(
+            `html: added referrerpolicy="no-referrer" to ${rp.added.length} external <img>/<iframe> (hotlink protection)`,
+          );
+        }
+        for (const w of rp.warnings) {
+          warn(
+            `<${w.tag}> at line ${w.line} has referrerpolicy="${w.existing}" (recommended: "no-referrer" for hotlink-protected hosts): ${w.src}`,
+          );
+        }
+
         const htmlForUpload = htmlText !== htmlOriginal ? Buffer.from(htmlText, 'utf8') : htmlBuf;
 
         // ---- Preflight: local-path leak scan (asset 参照外も含む全文) -----

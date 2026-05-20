@@ -72,6 +72,25 @@ zuroku publish ./index.html ./*.png --title "..." --private
 
 緊急 bypass: `ZUROKU_SKIP_PREFLIGHT=1 zuroku publish ...` (debug 用、本番では使わない)。
 
+### R6. 外部 subresource の hotlink protection (v0.1.5+, 自動)
+
+zuroku CLI は publish/update 時に HTML を scan し、`<img src="https://...">` と
+`<iframe src="https://...">` に `referrerpolicy="no-referrer"` が無ければ
+自動付与する。理由:
+
+- 配信ドメイン (例: `app.zuroku.masao.ai`) を Referer に載せると、X / 一部 CDN /
+  報道サイトの hotlink protection が **403 / placeholder** を返す。
+- `curl` / `fetch(url)` だと 200 が返るので「URL は生きている」と誤認しがちだが、
+  ブラウザ subresource として読むと壊れる。**初見エージェントが最も機械的に踏む罠**。
+- 自動付与時は stderr に `info  html: added referrerpolicy="no-referrer" to N external <img>/<iframe>` が出る。
+- 既に `referrerpolicy` が指定済みで値が `no-referrer` 以外 (`origin` / `unsafe-url` 等) なら
+  CLI は **書き換えず warn を出す** (誤設定の hint)。
+
+スコープ外:
+- `<a href="https://...">` (ナビゲーションは hotlink 制限の対象外)
+- `img/<basename>` (zuroku asset。同一 origin)
+- `data:` / `blob:` URI
+
 ### R5. local-path leak preflight (v0.1.3+)
 
 preflight は asset 参照だけでなく **HTML 全体を text として scan** し、viewer 環境では絶対に解決しない作者マシン path を見つけたら `LOCAL_PATH_LEAK` で fail-fast する:
@@ -145,6 +164,7 @@ URL=$(zuroku publish ./index.html ./img/*.png --title "..." 2>/dev/null | tail -
 |---|---|---|
 | `INVALID_INPUT [MISSING]` | HTML 内 src と asset の filename 不一致 | preflight メッセージの Suggested fixes を読む |
 | `LOCAL_PATH_LEAK` | HTML 本文に `/Users/...` 等の作者マシン path が混入 (v0.1.3+ で検知) | HTML 側で絶対パスを削除 / 公開 URL に置換 / ファイル名だけ抽象的に言及 |
+| 公開ページで外部画像だけ 403 / placeholder | hotlink protection (Referer 検査) | v0.1.5+ は自動付与。**warn 行 `referrerpolicy="..." (recommended: "no-referrer")` が出たら** HTML 側を `no-referrer` に直す。`<a>` には不要 |
 | 配信ページで画像 404 | (v0.1.1+ では自動 rewrite される。それ以前 / HTML を直接書き換えていた場合) basename 不一致。HTML の `<img src="img/...">` と asset 引数の filename を再確認 |
 | `UNSUPPORTED_MEDIA 415` | SVG / Content-Type 偽装 | PNG/JPEG/WebP/GIF のみ |
 | `BODY_TOO_LARGE 413` | ファイル 5 MiB 超過 | 事前リサイズ |
