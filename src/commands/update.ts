@@ -7,12 +7,14 @@ import {
   ZurokuClient,
   ZurokuError,
   type AssetUpload,
+  type UploadPayload,
   type ZurokuConfig,
 } from '@zuroku/core';
 import { fatal, info, success, warn } from '../lib/console.js';
 import { loadRuntimeConfig, makeClient } from '../lib/config.js';
 import { scanLocalPathLeaks, formatLeakReport } from '../lib/preflight.js';
 import { ensureNoReferrerForExternal } from '../lib/referrer-policy.js';
+import { compressThumbToJpeg, isGifThumb, isThumbName } from '../lib/thumbnail.js';
 import {
   extractHtmlAssetRefs,
   preflightErrorMessage,
@@ -216,9 +218,21 @@ export function registerUpdateCommand(parent: Command): void {
         for (const img of opts.keepAssets ? [] : images) {
           const abs = path.resolve(img);
           const label = path.basename(abs);
-          const payload = opts.compress
-            ? await compressForUpload(abs)
-            : await passthroughForUpload(abs);
+          // thumb (OG 画像) は WebP だと LinkedIn/Facebook/LINE 等の unfurl で描画されない
+          // ため JPEG に変換する。GIF thumb はアニメ保持のため対象外 (通常処理に回す)。
+          let payload: UploadPayload;
+          if (opts.compress && isThumbName(label) && !isGifThumb(label)) {
+            payload = await compressThumbToJpeg(abs);
+          } else if (opts.compress) {
+            payload = await compressForUpload(abs);
+          } else {
+            payload = await passthroughForUpload(abs);
+            if (isThumbName(label) && payload.contentType === 'image/webp') {
+              warn(
+                'thumb.* が WebP です。OG/SNS unfurl (LinkedIn/Facebook/LINE) で表示されない場合があります。サムネは PNG/JPEG 推奨。',
+              );
+            }
+          }
           info(
             `asset: ${label} -> ${payload.filename} (${payload.buffer.byteLength} bytes, ${payload.contentType})`,
           );
