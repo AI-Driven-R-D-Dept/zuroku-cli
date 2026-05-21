@@ -4,7 +4,7 @@ description: HTML + 関連画像を zuroku CLI で publish したい場面で発
 license: MIT
 metadata:
   author: AI-Driven-R-D-Dept
-  version: '0.1.7'
+  version: '0.1.8'
 user-invocable: true
 argument-hint: <html-path> [image-paths...] --title "..." [--no-compress] [--visibility private|curator] [--private]
 allowed-tools: Bash, Read, Edit, Write
@@ -59,7 +59,8 @@ zuroku publish ./index.html ./*.png --title "..." --private
 - **どの画像を `thumb` にするか**: その記事の **全体像を最もよく表す 1 枚** を選んで `thumb.*` にリネームして含める。
   - 良い例: 図解全体の俯瞰図 / 完成形のキービジュアル / 記事の結論を 1 枚で示す図。
   - 避ける: 部分拡大・補足の細部図・文脈なしでは意味が伝わらない断片。SNS のカードや一覧で「これは何の記事か」が一目で伝わる 1 枚を選ぶ。
-- 圧縮 (R2) で `thumb.png` → `thumb.webp` に rename されてもサムネとして認識される。
+- **`thumb.*` は OG/SNS unfurl 互換のため CLI が自動で JPEG (`thumb.jpg`) に変換する** (v0.1.8+)。他の asset は WebP 圧縮されるが、サムネだけは LinkedIn / Facebook / LINE 等が WebP の og:image を描画しない問題を避けるため JPEG に揃える (Slack/Discord は WebP でも可)。HTML 内の `img/thumb.png` 参照も `img/thumb.jpg` に自動 rewrite される。
+  - GIF の `thumb.gif` はアニメ保持のため変換しない。`--no-compress` で WebP の thumb を渡すと warn が出る (OG が表示されない可能性)。
 - `update` の全置換でも `thumb.*` を含めれば再選定される。`--keep-assets` では既存のサムネがそのまま維持される。
 
 ### R3. サイズ上限
