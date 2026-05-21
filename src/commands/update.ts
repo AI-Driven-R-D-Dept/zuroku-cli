@@ -17,6 +17,7 @@ import {
   extractHtmlAssetRefs,
   preflightErrorMessage,
   rewriteHtmlForRename,
+  rewriteHtmlToServerAssets,
 } from './publish.js';
 
 const HTML_MAX_BYTES = 5 * 1024 * 1024; // 5 MiB
@@ -25,6 +26,7 @@ interface UpdateOpts {
   compress: boolean;
   keepAssets: boolean;
   baseUrl?: string;
+  title?: string;
 }
 
 interface RepublishInitResponse {
@@ -118,6 +120,36 @@ async function fetchProjectAssetFilenames(
   return new Set((j.assets ?? []).map((a) => a.filename));
 }
 
+/**
+ * 既存 project の登録タイトルを変更する (PATCH /api/projects/:id)。
+ * republish は本文/画像のみ差し替えで登録タイトルを変えないため、`zuroku update --title`
+ * の実体として使う。
+ */
+async function patchProjectTitle(
+  config: ZurokuConfig,
+  projectId: string,
+  title: string,
+): Promise<void> {
+  const base = config.base_url.replace(/\/+$/, '');
+  const res = await fetch(`${base}/api/projects/${encodeURIComponent(projectId)}`, {
+    method: 'PATCH',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.token}`,
+    },
+    body: JSON.stringify({ title }),
+  });
+  if (!res.ok) {
+    const j = (await res.json().catch(() => ({}))) as { error?: { code?: string; message?: string } };
+    throw new ZurokuError(
+      j.error?.code ?? 'HTTP_ERROR',
+      res.status,
+      `title update failed: ${j.error?.message ?? res.statusText}`,
+    );
+  }
+}
+
 export function registerUpdateCommand(parent: Command): void {
   parent
     .command('update')
@@ -130,10 +162,25 @@ export function registerUpdateCommand(parent: Command): void {
       '--keep-assets',
       'Update HTML only and keep all existing images untouched (ignores [images...])',
     )
+    .option(
+      '-T, --title <title>',
+      "Also change the project's registered title (otherwise the title is kept from the original publish)",
+    )
     .option('-u, --base-url <url>', 'Override API base URL')
     .action(async (slugOrId: string, htmlArg: string, images: string[], opts: UpdateOpts) => {
       try {
         const config = await loadRuntimeConfig({ ...(opts.baseUrl ? { baseUrl: opts.baseUrl } : {}) });
+
+        // ---- --title 事前 validation -------------------------------------
+        // title PATCH は republish の後段に走るため、ここで弾かないと「本文 republish 済 +
+        // タイトル PATCH 失敗」の部分適用になる。server と同じ制約 (非空 / <=200) を先に検査。
+        if (opts.title !== undefined) {
+          const t = opts.title.trim();
+          if (!t) throw new ZurokuError('INVALID_INPUT', 0, '--title must not be empty');
+          if (t.length > 200) {
+            throw new ZurokuError('INVALID_INPUT', 0, `--title exceeds 200 chars (got ${t.length})`);
+          }
+        }
 
         // ---- HTML ---------------------------------------------------------
         const htmlPath = path.resolve(htmlArg);
@@ -207,7 +254,7 @@ export function registerUpdateCommand(parent: Command): void {
           );
         }
 
-        const htmlForUpload = htmlText !== htmlOriginal ? Buffer.from(htmlText, 'utf8') : htmlBuf;
+        let htmlForUpload = htmlText !== htmlOriginal ? Buffer.from(htmlText, 'utf8') : htmlBuf;
 
         // ---- Preflight: local-path leak scan (asset 参照外も含む全文) -----
         if (process.env.ZUROKU_SKIP_PREFLIGHT !== '1') {
@@ -248,25 +295,35 @@ export function registerUpdateCommand(parent: Command): void {
         const projectId = await resolveProjectId(client, slugOrId);
         info(`project_id=${projectId}`);
 
-        // ---- keep-assets: HTML 画像参照とサーバ既存 asset の照合 (warn) ----------
-        // keep-assets は asset 欠落 preflight をスキップするため、HTML が前回と違う
-        // 画像名 (img/b.webp 等) を参照していても沈黙して通り、本番で 404 になる。
-        // 「本文だけ直す」つもりの agent が参照名を変えた事故を warn で気付かせる
-        // (republish 自体は止めない: keep-assets はユーザーの明示的選択)。
-        if (opts.keepAssets && process.env.ZUROKU_SKIP_PREFLIGHT !== '1') {
+        // ---- keep-assets: HTML のローカル画像参照をサーバ既存 asset に揃える --------
+        // keep-assets は新規 asset を送らない (provided が空) ため、上の
+        // rewriteHtmlForRename の path/拡張子正規化が効かない。ソース HTML が
+        // `images/foo.png` のままだとサーバの `img/foo.webp` を指さず全画像 404 になる
+        // (実際に踏まれた事故)。サーバの filename を取得し stem 一致で
+        // `(?:img|images)/<file>` → `img/<serverfile>` に揃える。属性値スコープで処理し
+        // 絶対 URL は触らない。解決できない参照は warn。
+        // 注: これは validation ではなく correctness のための transform なので
+        // ZUROKU_SKIP_PREFLIGHT では無効化しない (skip で 404 バグが再発しないように)。
+        if (opts.keepAssets) {
           try {
             const existing = await fetchProjectAssetFilenames(config, projectId);
-            const { expectedFilenames } = extractHtmlAssetRefs(htmlText);
-            const missing = [...expectedFilenames].filter((f) => !existing.has(f));
-            if (missing.length > 0) {
-              warn(
-                '--keep-assets: HTML references img/ files not present on the server ' +
-                  '(these will 404 — re-run without --keep-assets and pass every image to replace the asset set):',
+            const rw = rewriteHtmlToServerAssets(htmlText, [...existing]);
+            if (rw.rewritten.length > 0) {
+              htmlText = rw.html;
+              htmlForUpload = Buffer.from(htmlText, 'utf8');
+              info(
+                `html: rewrote ${rw.rewritten.length} local img ref(s) to existing server assets (keep-assets)`,
               );
-              for (const f of missing) warn(`  - img/${f}`);
+            }
+            if (rw.unmatched.length > 0) {
+              warn(
+                '--keep-assets: HTML references images not present on the server ' +
+                  '(these will 404 — fix the refs or re-run without --keep-assets and pass every image):',
+              );
+              for (const u of rw.unmatched) warn(`  - ${u}`);
             }
           } catch (e) {
-            // 取得失敗は致命ではない (republish は続行)。照合だけ skip。
+            // 取得失敗は致命ではない (republish は続行)。照合/rewrite だけ skip。
             warn(
               `--keep-assets: could not verify existing assets (${(e as Error).message ?? String(e)}); skipping reference check`,
             );
@@ -304,6 +361,18 @@ export function registerUpdateCommand(parent: Command): void {
         );
 
         success(`updated: slug=${res.slug} id=${res.id}`);
+
+        // ---- title 変更 (任意) -------------------------------------------
+        // republish は本文/画像のみ差し替え、登録タイトル (一覧 / OG / og:title) は
+        // 初回 publish の値のまま。--title 指定時は PATCH /api/projects/:id で更新する
+        // (HTML の <title> タグを直すだけでは登録タイトルは変わらない)。
+        if (opts.title !== undefined && opts.title.trim()) {
+          const t = opts.title.trim();
+          info(`updating registered title to "${t}"...`);
+          await patchProjectTitle(config, projectId, t);
+          success('title updated');
+        }
+
         process.stdout.write(`${res.url}\n`);
       } catch (e) {
         fatal(e);
