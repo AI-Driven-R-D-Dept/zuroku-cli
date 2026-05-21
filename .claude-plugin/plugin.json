@@ -1,7 +1,7 @@
 {
   "name": "zuroku",
-  "description": "Publish AI-generated graphic-recording HTML + assets to your zuroku instance. Bundles the zuroku-publish and run-explainer-page skills. Requires the `zuroku` CLI on PATH (npm i -g @zuroku/cli).",
-  "version": "0.1.7",
+  "description": "Publish AI-generated graphic-recording HTML + assets to your zuroku instance. Bundles the zuroku-publish skill. Requires the `zuroku` CLI on PATH (npm i -g @zuroku/cli).",
+  "version": "0.1.9",
   "author": {
     "name": "AI-Driven-R-D-Dept"
   },

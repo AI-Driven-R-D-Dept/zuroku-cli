@@ -137,13 +137,13 @@ Manual install also works: copy [`skills/zuroku-publish/SKILL.md`](./skills/zuro
 
 ## Claude Code plugin
 
-This repo is also a [Claude Code plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugins). Installing the plugin bundles both skills (`zuroku-publish`, `run-explainer-page`) under a `zuroku:` namespace.
+This repo is also a [Claude Code plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugins). Installing the plugin bundles the `zuroku-publish` skill under a `zuroku:` namespace.
 
 ```bash
 # in Claude Code
 /plugin marketplace add AI-Driven-R-D-Dept/zuroku-cli
 /plugin install zuroku@zuroku
-# → /zuroku:zuroku-publish, /zuroku:run-explainer-page become available
+# → /zuroku:zuroku-publish becomes available
 ```
 
 The plugin manifest lives in [`.claude-plugin/`](./.claude-plugin/) (`plugin.json` + `marketplace.json`).

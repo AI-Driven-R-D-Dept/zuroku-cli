@@ -8,7 +8,7 @@
     {
       "name": "zuroku",
       "source": "./",
-      "description": "zuroku-publish + run-explainer-page skills. Requires the `zuroku` CLI on PATH (npm i -g @zuroku/cli)."
+      "description": "zuroku-publish skill. Requires the `zuroku` CLI on PATH (npm i -g @zuroku/cli)."
     }
   ]
 }
