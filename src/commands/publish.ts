@@ -47,8 +47,12 @@ export function rewriteHtmlForRename(
   let out = html;
   for (const [from, to] of map) {
     const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // 境界 lookahead: 引用符 / 空白 / ) , の他に `>` も許す。`<img src=img/foo.png>` の
+    // ような unquoted 属性で src が `>` 直前に来るケースを取りこぼすと、compress の
+    // .png→.webp rename が効かず本番ページが .png 404 になる。`.bak` 等の部分一致は
+    // 直後が `.` なので引き続き弾かれる。
     out = out.replace(
-      new RegExp(`(?:img|images)/${escaped}(?=["'\\s),])`, 'g'),
+      new RegExp(`(?:img|images)/${escaped}(?=["'\\s),>])`, 'g'),
       `img/${to}`,
     );
   }
@@ -178,7 +182,7 @@ export function registerPublishCommand(parent: Command): void {
     .option('-u, --base-url <url>', 'Override API base URL')
     .option(
       '-V, --visibility <mode>',
-      "Visibility: private | curator. Server reserves 'public' and rejects it. Falls back to --private then ~/.config/zuroku/config.json then server default (curator) when omitted.",
+      "Visibility: private | curator | public. 'public' is viewable by anyone with the link (kept out of timeline/search, served noindex); it can be set per publish but not stored as a config default. Falls back to --private then ~/.config/zuroku/config.json then server default (curator) when omitted.",
     )
     .option('--private', 'Shortcut for --visibility private (wins over --visibility if both are set)')
     .action(async (htmlArg: string, images: string[], opts: PublishOpts) => {

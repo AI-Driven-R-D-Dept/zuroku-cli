@@ -88,6 +88,7 @@ Each publish has a visibility:
 
 - `private` — only the owner can view.
 - `curator` — viewable by Discord members with the configured curator role.
+- `public` — viewable by anyone with the link (not just curators). Still kept out of the in-app timeline/search, and served with `X-Robots-Tag: noindex,nofollow` (link sharing / SNS unfurl only, no SEO indexing).
 
 Order of precedence: CLI flag (`--private` > `--visibility`) → per-user config `default-visibility` → server default (`curator`).
 
@@ -98,7 +99,7 @@ zuroku config unset default-visibility   # back to server default
 zuroku config get                        # show current settings
 ```
 
-`public` is reserved by the server and rejected by both CLI and API. To make something publicly visible, publish as `curator` and toggle visibility from the web UI.
+`public` can be set per publish (`zuroku publish … --visibility public`), but **cannot** be stored as a `default-visibility` config value — public exposure should always be a deliberate per-publish choice, never a silent default. You can also toggle visibility (including to/from `public`) later from the web UI.
 
 ## Output contract
 
