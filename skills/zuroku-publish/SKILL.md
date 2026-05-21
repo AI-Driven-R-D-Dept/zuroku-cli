@@ -4,7 +4,7 @@ description: HTML + 関連画像を zuroku CLI で publish したい場面で発
 license: MIT
 metadata:
   author: AI-Driven-R-D-Dept
-  version: '0.1.6'
+  version: '0.1.7'
 user-invocable: true
 argument-hint: <html-path> [image-paths...] --title "..." [--no-compress] [--visibility private|curator] [--private]
 allowed-tools: Bash, Read, Edit, Write
@@ -52,6 +52,15 @@ zuroku publish ./index.html ./*.png --title "..." --private
 - 拡張子 `.png` → `.webp` の rename が発生するが、**HTML 内 `<img src="img/foo.png">` は CLI が自動で `.webp` に rewrite する** (v0.1.1+)。AI agent 側で sed は不要。
 - `--no-compress` を付けると original のまま upload (filename 不変、HTML も触らず)。サイズが大きい時は事前リサイズしないと R3 に当たる。
 - GIF はアニメ保持のため compress でも passthrough (filename 不変)。
+
+### R2.5. サムネ / OG 画像 (`thumb.*` 規約)
+- OG 画像 (SNS unfurl / アプリ内一覧のサムネ) は **`thumb.{png|jpg|jpeg|webp|gif}` という名前の画像**が自動で選ばれる。専用フラグは無く、ファイル名規約で指定する。
+- `thumb.*` が無ければ asset の **1 枚目** (`created_at`→`filename` 昇順の先頭) に自動フォールバックする。意図しない画像がサムネになりがちなので、サムネを効かせたい記事では必ず `thumb.*` を用意する。
+- **どの画像を `thumb` にするか**: その記事の **全体像を最もよく表す 1 枚** を選んで `thumb.*` にリネームして含める。
+  - 良い例: 図解全体の俯瞰図 / 完成形のキービジュアル / 記事の結論を 1 枚で示す図。
+  - 避ける: 部分拡大・補足の細部図・文脈なしでは意味が伝わらない断片。SNS のカードや一覧で「これは何の記事か」が一目で伝わる 1 枚を選ぶ。
+- 圧縮 (R2) で `thumb.png` → `thumb.webp` に rename されてもサムネとして認識される。
+- `update` の全置換でも `thumb.*` を含めれば再選定される。`--keep-assets` では既存のサムネがそのまま維持される。
 
 ### R3. サイズ上限
 - HTML: 5 MiB
