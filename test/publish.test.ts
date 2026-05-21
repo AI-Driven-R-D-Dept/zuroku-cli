@@ -121,6 +121,19 @@ describe('rewriteHtmlForRename (compress 時の HTML img src 自動 rewrite)', (
     expect(out).toBe('<img src="img/a.webp"><img src="img/b.webp"><img src="img/c.webp">');
   });
 
+  it('外部 URL 内の images/<非provided> は壊さない (global sed と違い provided にアンカー)', () => {
+    // skill TL;DR の素朴な `sed 's|images/|img/|g'` だと外部 URL も壊れるが、
+    // rewriteHtmlForRename は provided filename にアンカーするので外部 URL は無傷。
+    const html =
+      '<img src="https://storage.googleapis.com/x/images/hero.max-1200.webp">' +
+      '<img src="images/foo.png">';
+    const out = rewriteHtmlForRename(html, [{ from: 'foo.png', to: 'foo.webp' }], ['foo.webp']);
+    expect(out).toBe(
+      '<img src="https://storage.googleapis.com/x/images/hero.max-1200.webp">' +
+        '<img src="img/foo.webp">',
+    );
+  });
+
   it('img/ や images/ 以外の prefix (assets/, style/) は触らない (CSS/JS path 保護)', () => {
     const html = '<link href="style/foo.png">\n<img src="assets/foo.png">';
     const out = rewriteHtmlForRename(html, [{ from: 'foo.png', to: 'foo.webp' }]);

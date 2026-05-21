@@ -4,7 +4,7 @@ description: HTML + 関連画像を zuroku CLI で publish したい場面で発
 license: MIT
 metadata:
   author: AI-Driven-R-D-Dept
-  version: '0.1.5'
+  version: '0.1.6'
 user-invocable: true
 argument-hint: <html-path> [image-paths...] --title "..." [--no-compress] [--visibility private|curator] [--private]
 allowed-tools: Bash, Read, Edit, Write
@@ -17,26 +17,34 @@ allowed-tools: Bash, Read, Edit, Write
 ## TL;DR
 
 ```bash
-# HTML 内の <img src> を `img/<basename>` 形式に揃える (img/ prefix 必須)
+# HTML と画像をデプロイ用ディレクトリに集める (sed での書き換えは原則不要、下の注意参照)
 mkdir -p /tmp/zuroku-deploy
-sed 's|images/|img/|g' /path/to/index.html > /tmp/zuroku-deploy/index.html
-cp /path/to/images/*.png /tmp/zuroku-deploy/
+cp /path/to/index.html /path/to/images/*.png /tmp/zuroku-deploy/
 
 cd /tmp/zuroku-deploy
 zuroku publish ./index.html ./*.png --title "..."
-# - sharp で client-side WebP 圧縮 (85%、長辺 2000px) → 通信量 / 表示も軽量
-# - HTML 内 <img src="img/foo.png"> は CLI が自動で .webp に rewrite (v0.1.1+)
+# - `images/<画像>` 参照は CLI が **provided asset の filename にアンカーして**
+#   自動で `img/<画像>` に正規化する。手動 sed は不要 (外部 URL は壊さない)。
+# - sharp で client-side WebP 圧縮 (85%、長辺 2000px)。<img src="img/foo.png"> も
+#   CLI が自動で .webp に rewrite (v0.1.1+)。
 # - 標準出力の最終行が公開 URL
 
 # 自分だけが見える private で上げたい場合
 zuroku publish ./index.html ./*.png --title "..." --private
 ```
 
+> ⚠️ **`sed 's|images/|img/|g'` のような bare 置換は使わない。** 文字列 `images/`
+> をどこでも置換するため、HTML 内の外部画像 URL
+> (`https://.../images/foo.webp` 等) まで `.../img/...` に化けさせて 404 にする。
+> ローカル参照の正規化は CLI が安全に行うので不要。どうしても手動で直す必要がある
+> 場合 (後述 `assets/` 等) は `src="images/` のように**ローカル参照だけにアンカー**すること。
+
 ## 制約
 
 ### R1. HTML の image src は `img/<basename>` に統一
 - 配信ルートが `/p/:slug/img/:filename` 固定。HTML 側は相対 `<img src="img/foo.png">` で参照する。
-- `images/`、`./assets/` 等で書かれていれば publish 前に sed で書き換える。
+- **`images/<画像>` (複数形) は CLI が provided asset について自動で `img/` に正規化する**ので手動修正は不要。外部 URL (`https://.../images/...`) は provided にアンカーされるため触られない。
+- `assets/`、`style/` 等の**別ディレクトリ名**は自動正規化の対象外。必要なら `src="assets/` のように**ローカル参照だけにアンカー**して書き換える。**bare `images/` を global 置換しないこと** (外部 URL 内の `images/` まで壊して 404 になる)。
 - SVG (`<img src="img/foo.svg">`) は受け付けない。PNG / JPEG / WebP / GIF のみ。
 
 ### R2. 圧縮 (default ON、client-side で軽量化される)
@@ -69,7 +77,7 @@ zuroku publish ./index.html ./*.png --title "..." --private
 |---|---|---|
 | `[MISSING]` | HTML が参照しているが asset 引数にない file | `--no-compress` 漏れ or rename ミス |
 | `[UNUSED]` | asset 引数にあるが HTML 未参照 | 余分な image を引数から外す |
-| `[WRONG-PATH]` | `img/` で始まらない相対参照 | sed で `images/` → `img/` 等に書換 |
+| `[WRONG-PATH]` | `img/` で始まらない相対参照 | `src="images/` のように**ローカル参照だけにアンカー**して書換 (bare `images/` の global 置換は外部 URL を壊すので不可) |
 
 緊急 bypass: `ZUROKU_SKIP_PREFLIGHT=1 zuroku publish ...` (debug 用、本番では使わない)。
 

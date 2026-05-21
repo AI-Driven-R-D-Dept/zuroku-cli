@@ -28,18 +28,25 @@ zuroku auth login --token zrk_live_xxx
 # self-hosted instance:
 # zuroku auth login --token zrk_live_xxx --base-url https://zuroku.example.com
 
-# 2. Make sure your HTML references images as `<img src="img/foo.png">`.
-#    If your generator emits `images/...`, rewrite it first:
+# 2. Collect the HTML and its images into one directory and publish.
+#    `images/<file>` references are auto-normalized to `img/<file>` for your
+#    provided assets — no manual sed needed.
 mkdir -p /tmp/zuroku-deploy
-sed 's|images/|img/|g' /path/to/index.html > /tmp/zuroku-deploy/index.html
-cp /path/to/images/*.png /tmp/zuroku-deploy/
+cp /path/to/index.html /path/to/images/*.png /tmp/zuroku-deploy/
 
 cd /tmp/zuroku-deploy
 zuroku publish ./index.html ./*.png --title "..."
 # - assets are compressed to WebP client-side (sharp, 85% quality, max 2000px long-edge)
-# - <img src="img/foo.png"> in the HTML is auto-rewritten to .webp on the fly (since v0.1.1)
+# - `images/foo.png` / `img/foo.png` are auto-rewritten to `img/foo.webp` (anchored to
+#   your provided assets — external URLs that contain `images/` are left intact)
 # - stdout last line is the public URL
 ```
+
+> **Do not run a bare `sed 's|images/|img/|g'`.** It rewrites the substring
+> `images/` everywhere, including external image URLs like
+> `https://.../images/foo.webp`, turning them into broken `.../img/...` links (404).
+> The CLI normalizes local references safely on its own. If you must hand-edit a
+> different prefix (e.g. `assets/`), anchor to `src="assets/` so external URLs are untouched.
 
 ## Commands
 
