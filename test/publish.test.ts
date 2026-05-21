@@ -4,7 +4,11 @@
 
 import { Command } from 'commander';
 import { describe, expect, it } from 'vitest';
-import { registerPublishCommand, rewriteHtmlForRename } from '../src/commands/publish.js';
+import {
+  registerPublishCommand,
+  rewriteHtmlForRename,
+  rewriteHtmlToServerAssets,
+} from '../src/commands/publish.js';
 
 function makeProgram(): Command {
   const program = new Command();
@@ -204,5 +208,82 @@ describe('rewriteHtmlForRename (compress 時の HTML img src 自動 rewrite)', (
     const html = '<a href="img/foo.png.bak">';
     const out = rewriteHtmlForRename(html, [{ from: 'foo.png', to: 'foo.webp' }]);
     expect(out).toBe(html);
+  });
+});
+
+
+describe('rewriteHtmlToServerAssets (--keep-assets: サーバ既存 asset に揃える)', () => {
+  it('images/foo.png をサーバの img/foo.webp に揃える (stem 一致・拡張子差)', () => {
+    const html = '<img src="images/concept-01.png" alt="x">';
+    const r = rewriteHtmlToServerAssets(html, ['concept-01.webp']);
+    expect(r.html).toBe('<img src="img/concept-01.webp" alt="x">');
+    expect(r.rewritten).toEqual(['images/concept-01.png']);
+    expect(r.unmatched).toEqual([]);
+  });
+
+  it('外部 URL (絶対) は値全体を skip して触らない', () => {
+    const html =
+      '<img src="https://cdn.example.com/images/concept-01.webp">' +
+      '<img src="images/concept-01.png">';
+    const r = rewriteHtmlToServerAssets(html, ['concept-01.webp']);
+    expect(r.html).toBe(
+      '<img src="https://cdn.example.com/images/concept-01.webp">' +
+        '<img src="img/concept-01.webp">',
+    );
+    expect(r.rewritten).toEqual(['images/concept-01.png']);
+  });
+
+  it('外部 URL のクエリ内 images/ も触らない (codex HIGH 回帰)', () => {
+    const html = '<img src="https://proxy.example.com/r?u=images/concept-01.png&w=800">';
+    const r = rewriteHtmlToServerAssets(html, ['concept-01.webp']);
+    expect(r.html).toBe(html); // 不変
+    expect(r.rewritten).toEqual([]);
+  });
+
+  it('protocol-relative URL (//cdn/...) も触らない', () => {
+    const html = '<img src="//cdn.example.com/images/concept-01.png">';
+    const r = rewriteHtmlToServerAssets(html, ['concept-01.webp']);
+    expect(r.html).toBe(html);
+  });
+
+  it('srcset の comma-no-space 候補も両方揃える (subagent MED 回帰)', () => {
+    const html = '<img srcset="images/a.png 1x,images/b.png 2x">';
+    const r = rewriteHtmlToServerAssets(html, ['a.webp', 'b.webp']);
+    expect(r.html).toBe('<img srcset="img/a.webp 1x, img/b.webp 2x">');
+    expect(r.unmatched).toEqual([]);
+  });
+
+  it('unquoted 属性 (src=img/a.png>) も揃える', () => {
+    const html = '<img src=images/a.png>';
+    const r = rewriteHtmlToServerAssets(html, ['a.webp']);
+    expect(r.html).toBe('<img src=img/a.webp>');
+  });
+
+  it('stem 衝突 (a.png と a.webp が両方 server) は曖昧として rewrite しない', () => {
+    const html = '<img src="images/a.gif">';
+    const r = rewriteHtmlToServerAssets(html, ['a.png', 'a.webp']);
+    expect(r.html).toBe(html);
+    expect(r.unmatched).toEqual(['images/a.gif']);
+  });
+
+  it('exact filename 一致は stem より優先 (no-op)', () => {
+    const html = '<img src="img/concept-01.webp">';
+    const r = rewriteHtmlToServerAssets(html, ['concept-01.webp']);
+    expect(r.html).toBe(html);
+    expect(r.rewritten).toEqual([]);
+    expect(r.unmatched).toEqual([]);
+  });
+
+  it('サーバに無い参照は unmatched で元参照のまま返す', () => {
+    const html = '<img src="img/ghost.png">';
+    const r = rewriteHtmlToServerAssets(html, ['concept-01.webp']);
+    expect(r.html).toBe(html);
+    expect(r.unmatched).toEqual(['img/ghost.png']);
+  });
+
+  it('./images/ プレフィックスも揃える', () => {
+    const html = '<img src="./images/a.png">';
+    const r = rewriteHtmlToServerAssets(html, ['a.webp']);
+    expect(r.html).toBe('<img src="img/a.webp">');
   });
 });

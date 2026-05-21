@@ -60,6 +60,98 @@ export function rewriteHtmlForRename(
 }
 
 /**
+ * `--keep-assets` 専用: サーバに既存の asset filename に合わせて HTML のローカル画像
+ * 参照を rewrite する。
+ *
+ * keep-assets では新規 asset を送らない (provided が空) ため rewriteHtmlForRename の
+ * 拡張子/path 正規化が効かず、ソース HTML の `images/foo.png` 等がサーバの
+ * `img/foo.webp` を指さず全画像 404 になる事故があった。サーバの filename を取得し、
+ * exact filename → stem (拡張子除去) 一致の順で `(?:img|images)/<file>` を
+ * `img/<serverfile>` に揃える。
+ *
+ * 安全策 (bare sed / 外部 URL 破壊の二の舞を避ける):
+ *  - **属性値スコープ**で処理する。`src` / `href` / `poster` / `srcset` の値だけを見て、
+ *    値が**絶対 URL (`scheme:` / `//` 始まり) / `data:` / fragment なら一切触らない**。
+ *    これにより外部 URL のクエリや括弧内に `images/foo.png` があっても壊さない
+ *    (旧実装は HTML 全文 regex + lookbehind で `?x=images/..` 等を誤爆し得た)。
+ *  - server に exact も unique stem も無い参照は rewrite せず unmatched (呼び出し側で warn)。
+ *  - stem が複数 server file に衝突する場合は曖昧として rewrite しない (unmatched)。
+ *
+ * 戻り値: { html, rewritten: 置換した元参照, unmatched: server に無く未解決の参照 }
+ */
+export function rewriteHtmlToServerAssets(
+  html: string,
+  serverFilenames: ReadonlyArray<string>,
+): { html: string; rewritten: string[]; unmatched: string[] } {
+  const exact = new Set(serverFilenames);
+  const stemMap = new Map<string, string>();
+  const ambiguousStems = new Set<string>();
+  for (const f of serverFilenames) {
+    const stem = f.replace(/\.[^.]+$/, '');
+    if (stemMap.has(stem) && stemMap.get(stem) !== f) ambiguousStems.add(stem);
+    else stemMap.set(stem, f);
+  }
+
+  const rewritten = new Set<string>();
+  const unmatched = new Set<string>();
+  // 値が `(?:./)?(img|images)/<file>[?#...]` のローカル画像参照か判定し、server asset に解決。
+  const LOCAL_REF = /^(?:\.\/)?(?:img|images)\/([A-Za-z0-9._@()\-]+\.[A-Za-z0-9]+)([?#][^\s]*)?$/;
+  const resolveRef = (raw: string): string => {
+    const v = raw.trim();
+    // 絶対 URL / protocol-relative / data: / fragment は対象外 (外部 URL を壊さない)
+    if (/^(?:[a-z][a-z0-9+.\-]*:|\/\/|#|data:)/i.test(v)) return raw;
+    const m = v.match(LOCAL_REF);
+    if (!m) return raw;
+    const fname = m[1]!;
+    const suffix = m[2] ?? '';
+    let target: string | undefined;
+    if (exact.has(fname)) {
+      target = fname;
+    } else {
+      const stem = fname.replace(/\.[^.]+$/, '');
+      if (!ambiguousStems.has(stem)) target = stemMap.get(stem);
+    }
+    if (!target) {
+      unmatched.add(v);
+      return raw;
+    }
+    const next = `img/${target}${suffix}`;
+    if (next !== v) rewritten.add(v);
+    return next;
+  };
+
+  let out = html;
+  // 引用付き src/href/poster
+  out = out.replace(
+    /\b(src|href|poster)(\s*=\s*)(["'])([^"']*)\3/gi,
+    (_m, attr: string, eq: string, q: string, val: string) => `${attr}${eq}${q}${resolveRef(val)}${q}`,
+  );
+  // 引用なし src/href/poster (空白 / > まで)
+  out = out.replace(
+    /\b(src|href|poster)(\s*=\s*)([^"'\s>]+)/gi,
+    (_m, attr: string, eq: string, val: string) => `${attr}${eq}${resolveRef(val)}`,
+  );
+  // srcset (カンマ区切り候補: `url [descriptor]`。スペース無しカンマも分割する)
+  out = out.replace(
+    /\bsrcset(\s*=\s*)(["'])([^"']*)\2/gi,
+    (_m, eq: string, q: string, val: string) => {
+      const cands = val
+        .split(',')
+        .map((c) => {
+          const seg = c.trim();
+          if (!seg) return '';
+          const sp = seg.split(/\s+/);
+          sp[0] = resolveRef(sp[0]!);
+          return sp.join(' ');
+        })
+        .filter((c) => c.length > 0);
+      return `srcset${eq}${q}${cands.join(', ')}${q}`;
+    },
+  );
+  return { html: out, rewritten: [...rewritten], unmatched: [...unmatched] };
+}
+
+/**
  * HTML 内の `<img src="...">` / `<link href="...">` / `<script src="...">` /
  * `srcset` から、この project の asset として参照されている filename (basename) を
  * 抽出する。zuroku は `img/<basename>` を expected layout とするため、
