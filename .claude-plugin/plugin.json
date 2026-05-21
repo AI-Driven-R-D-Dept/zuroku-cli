@@ -1,0 +1,11 @@
+{
+  "name": "zuroku",
+  "description": "Publish AI-generated graphic-recording HTML + assets to your zuroku instance. Bundles the zuroku-publish and run-explainer-page skills. Requires the `zuroku` CLI on PATH (npm i -g @zuroku/cli).",
+  "version": "0.1.7",
+  "author": {
+    "name": "AI-Driven-R-D-Dept"
+  },
+  "homepage": "https://github.com/AI-Driven-R-D-Dept/zuroku-cli#readme",
+  "repository": "https://github.com/AI-Driven-R-D-Dept/zuroku-cli.git",
+  "license": "MIT"
+}

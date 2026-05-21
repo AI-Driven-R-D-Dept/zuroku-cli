@@ -14,6 +14,9 @@ allowed-tools: Bash, Read, Edit, Write
 
 `zuroku publish` で HTML + 画像をアップロードする手順。AI agent (Claude Code 等) からの呼び出しを想定。
 
+> 前提: `zuroku` CLI が PATH にあること。無ければ `command -v zuroku` で確認し、
+> 未インストールなら `npm i -g @zuroku/cli` を案内する (このプラグインは CLI を同梱しない)。
+
 ## TL;DR
 
 ```bash

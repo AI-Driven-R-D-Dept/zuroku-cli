@@ -9,6 +9,7 @@
   "files": [
     "dist",
     "skills",
+    ".claude-plugin",
     "README.md",
     "LICENSE"
   ],

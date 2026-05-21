@@ -1,0 +1,14 @@
+{
+  "name": "zuroku",
+  "owner": {
+    "name": "AI-Driven-R-D-Dept"
+  },
+  "description": "zuroku publisher skills for Claude Code.",
+  "plugins": [
+    {
+      "name": "zuroku",
+      "source": "./",
+      "description": "zuroku-publish + run-explainer-page skills. Requires the `zuroku` CLI on PATH (npm i -g @zuroku/cli)."
+    }
+  ]
+}

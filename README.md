@@ -135,6 +135,21 @@ npx skills add AI-Driven-R-D-Dept/zuroku-cli -s zuroku-publish -a claude-code -g
 
 Manual install also works: copy [`skills/zuroku-publish/SKILL.md`](./skills/zuroku-publish/SKILL.md) into your project's `.claude/skills/zuroku-publish/SKILL.md`.
 
+## Claude Code plugin
+
+This repo is also a [Claude Code plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugins). Installing the plugin bundles both skills (`zuroku-publish`, `run-explainer-page`) under a `zuroku:` namespace.
+
+```bash
+# in Claude Code
+/plugin marketplace add AI-Driven-R-D-Dept/zuroku-cli
+/plugin install zuroku@zuroku
+# → /zuroku:zuroku-publish, /zuroku:run-explainer-page become available
+```
+
+The plugin manifest lives in [`.claude-plugin/`](./.claude-plugin/) (`plugin.json` + `marketplace.json`).
+
+> The plugin ships the skills only — it does **not** bundle the `zuroku` CLI. Install the CLI separately (`npm i -g @zuroku/cli`) so the skill's `zuroku …` calls resolve. If it's missing, the skill warns and points you to the install command.
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).
